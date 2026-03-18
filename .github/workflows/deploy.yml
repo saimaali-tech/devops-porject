@@ -7,33 +7,33 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
 
     outputs:
-      registry: ${{ steps.login-ecr.outputs.registry }}
+      image_tag: ${{ steps.build.outputs.image_tag }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ap-southeast-2
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag & push
+      - name: Build, tag & push Docker image
+        id: build
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: my-devops-app          # ← must match Terraform var.ecr_repo_name
+          ECR_REPOSITORY: my-devops-app
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_OUTPUT
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
@@ -48,14 +48,16 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
           script: |
-            # Login to ECR (uses IAM role on EC2)
-            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-              docker login --username AWS --password-stdin ${{ needs.build-and-push.outputs.registry }}
+            echo "🚀 Starting deployment..."
 
-            IMAGE=${{ needs.build-and-push.outputs.registry }}/my-devops-app:${{ github.sha }}
+            IMAGE=747549198981.dkr.ecr.ap-southeast-2.amazonaws.com/my-devops-app:${{ needs.build-and-push.outputs.image_tag }}
 
-            # Replace old container
+            # Login to ECR
+            aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin 747549198981.dkr.ecr.ap-southeast-2.amazonaws.com
+
+            # Stop & remove old container
             docker stop myapp || true
             docker rm myapp || true
 
@@ -65,4 +67,4 @@ jobs:
               -p 3005:3005 \
               $IMAGE
 
-            echo "✅ Deployment complete! Visit http://${{ secrets.EC2_HOST }}"
+            echo "✅ Deployment complete!"

@@ -43,7 +43,7 @@ jobs:
 
     steps:
       - name: Deploy to EC2 via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5          # Updated to newer version
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
@@ -51,25 +51,28 @@ jobs:
           port: 22
           timeout: 60s
           command_timeout: 10m
+          debug: false                              # Change to true only if debugging
           script: |
             echo "🚀 Starting deployment on $(date)..."
 
             IMAGE=747549198981.dkr.ecr.ap-southeast-2.amazonaws.com/my-devops-app:${{ needs.build-and-push.outputs.image_tag }}
 
-            # Login to ECR using AWS credentials (they are automatically available)
+            echo "📦 Logging into Amazon ECR..."
             aws ecr get-login-password --region ap-southeast-2 | \
               docker login --username AWS --password-stdin 747549198981.dkr.ecr.ap-southeast-2.amazonaws.com
 
-            # Stop & remove old container
+            echo "🛑 Stopping and removing old container..."
             docker stop myapp || true
             docker rm myapp || true
 
-            # Pull latest image and run
+            echo "📥 Pulling new image..."
             docker pull $IMAGE
 
+            echo "🚀 Starting new container..."
             docker run -d \
               --name myapp \
               -p 3005:3005 \
               $IMAGE
 
-            echo "✅ Deployment complete! Visit http://${{ secrets.EC2_HOST }}:3005"
+            echo "✅ Deployment completed successfully!"
+            echo "🌐 App is running at: http://${{ secrets.EC2_HOST }}:3005"
